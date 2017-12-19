@@ -1,14 +1,20 @@
 from numba import stencil, jit
+from numba import njit, prange
+import numba
 import numpy as np
 from matplotlib import pyplot
+
 
 vel = 3000.0
 f0 = 15
 nt = 200
 dt = .002
-nx = 100
-ny = 100
-nz = 100
+nx = 200
+ny = 200
+nz = 200
+#nx = 50
+#ny = 50
+#nz = 50
 h = vel/(f0*5.0)
 x_idx = nx//2
 y_idx = ny//2
@@ -23,8 +29,9 @@ coeff = [-3.0548446, 1.777777, -3.1111111/10, 7.572087/100, -1.767676/100, 3.480
 
 
 
-#@jit(nopython=True, parallel=True)
 @stencil(neighborhood = ((-radius, radius), (-radius, radius), (-radius, radius),), standard_indexing=("coeff",) )
+#@jit(nopython=True, parallel=True)
+#@numba.njit(parallel=True)
 def laplace(a, coeff):
 #def laplace(a):
 	laplace = coeff[0]*a[0, 0, 0]*3
@@ -33,11 +40,22 @@ def laplace(a, coeff):
 	return laplace
 
 
-#add in later
-@stencil
-def timestep(a, b):
-	return 0
-
+@numba.njit(parallel=True)
+def laplace_manual_stencil(a, coeff):
+#def laplace(a):
+	laplace = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
+	for x in prange(radius, nx-radius):
+		#print("one x laplacian done")
+		for y in prange(radius, ny-radius):
+			#print("one x, y laplacian done")
+			for z in prange(radius, nz-radius):
+				#print("one x, y, z laplacian done")
+				laplace[x, y, z] = coeff[0]*a[x, y, z]*3
+				for i in range(1, radius+1):
+					laplace[x, y, z] += coeff[i]*((a[x, y, z-i] + a[x, y, z+i])
+							 + (a[x, y-i, z] + a[x, y+i, z]) 
+							 + (a[x-i, y, z] + a[x+i, y, z]))
+	return laplace
 
 
 
@@ -55,24 +73,29 @@ for i in range(nt):
 
 prev_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
 curr_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
+next_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
 curr_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[0]*(vel*dt)**2
 
 #laplace_arr = laplace(curr_timestep, coeff)
 #print laplace_arr
 
+#@njit(parallel=True)
 
 
+#@numba.njit(parallel=True)
+def time_step(next_timestep, curr_timestep, prev_timestep, nt):
+	for i in prange(1, nt): 
+		next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
+		#next_timestep = 2*curr_timestep - prev_timestep + laplace_manual_stencil(curr_timestep, coeff)*((dt*vel/h)**2) 
+		next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[i]*(vel*dt)**2
+		prev_timestep = curr_timestep
+		curr_timestep = next_timestep
+		#print(next_timestep[x_idx+radius, y_idx+radius, z_idx+radius])
 
-for i in range(1, nt): 
-	
-	#@jit(nopython=True, paralleli=True)
-	next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
-	next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[i]*(vel*dt)**2
-	prev_timestep = curr_timestep
-	curr_timestep = next_timestep
-	
-	print next_timestep[x_idx+radius, y_idx+radius, z_idx+radius]
+		#print(laplace(next_timestep, coeff)[x_idx+radius, y_idx+radius, z_idx+radius])
+	return next_timestep
 
+next_timestep = time_step(next_timestep, curr_timestep, prev_timestep, nt)
 
 fig, ax = pyplot.subplots()
 next_timestep = (next_timestep[:, :, z_idx + radius]) 
