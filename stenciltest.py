@@ -40,7 +40,8 @@ def laplace(a, coeff):
 	return laplace
 
 
-@stencil(neighborhood = ((radius, nx-radius), (radius, ny-radius), (radius, nz-radius),), standard_indexing=("coeff",) )
+@stencil(neighborhood = ((0, nx), (0, ny), (0, nz),), standard_indexing=("coeff",) )
+#@numba.njit(parallel=True)
 def timestep_stencil(curr_timestep, prev_timestep, coeff):
 	#laplace = laplace(curr_timestep, coeff)
 	#return 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
