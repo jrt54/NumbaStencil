@@ -7,11 +7,11 @@ from matplotlib import pyplot
 
 vel = 3000.0
 f0 = 15
-nt = 200
+nt = 50
 dt = .002
-nx = 200
-ny = 200
-nz = 200
+nx = 50
+ny = 50
+nz = 50
 #nx = 50
 #ny = 50
 #nz = 50
@@ -39,6 +39,25 @@ def laplace(a, coeff):
 		laplace+= coeff[i]*((a[0, 0, -i] + a[0, 0, i]) + (a[0, -i, 0] + a[0, i, 0]) + (a[-i, 0, 0] + a[i, 0, 0]))
 	return laplace
 
+
+@stencil(neighborhood = ((radius, nx-radius), (radius, ny-radius), (radius, nz-radius),), standard_indexing=("coeff",) )
+def timestep_stencil(curr_timestep, prev_timestep, coeff):
+	#laplace = laplace(curr_timestep, coeff)
+	#return 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
+	#next_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
+	#next_timestep = laplace(curr_timestep, coeff)[0, 0, 0]
+	#next_timestep = 2*curr_timestep[0,0,0] - prev_timestep[0,0,0]
+	#return 2*curr_timestep[0,0,0] - prev_timestep[0,0,0]# + laplace(curr_timestep, coeff)[0,0,0]#*((dt*vel/h)**2) 
+	
+	##laplacian calculation
+	next_timestep = (dt*vel/h)**2*coeff[0]*curr_timestep[0, 0, 0]*3
+	for i in range(1, radius+1):
+		next_timestep+= (dt*vel/h)**2*coeff[i]*((curr_timestep[0, 0, -i] + curr_timestep[0, 0, i]) + (curr_timestep[0, -i, 0] + curr_timestep[0, i, 0]) + (curr_timestep[-i, 0, 0] + curr_timestep[i, 0, 0]))
+	##end laplacian
+	#next_timestep*=((dt*vel/h)**2)
+	next_timestep += 2*curr_timestep[0,0,0] - prev_timestep[0, 0, 0]
+
+	return next_timestep
 
 @numba.njit(parallel=True)
 def laplace_manual_stencil(a, coeff):
@@ -84,18 +103,31 @@ curr_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[0]*(vel*dt)**2
 
 #@numba.njit(parallel=True)
 def time_step(next_timestep, curr_timestep, prev_timestep, nt):
-	for i in prange(1, nt): 
+	for i in range(1, nt): 
 		next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
 		#next_timestep = 2*curr_timestep - prev_timestep + laplace_manual_stencil(curr_timestep, coeff)*((dt*vel/h)**2) 
 		next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[i]*(vel*dt)**2
 		prev_timestep = curr_timestep
 		curr_timestep = next_timestep
-		#print(next_timestep[x_idx+radius, y_idx+radius, z_idx+radius])
+		print(next_timestep[x_idx+radius, y_idx+radius, z_idx+radius])
 
 		#print(laplace(next_timestep, coeff)[x_idx+radius, y_idx+radius, z_idx+radius])
 	return next_timestep
 
-next_timestep = time_step(next_timestep, curr_timestep, prev_timestep, nt)
+def time_step_stencil(next_timestep, curr_timestep, prev_timestep, nt):
+	for i in range(1, nt): 
+		print(i)
+		timestep_stencil(curr_timestep, prev_timestep, coeff, out=next_timestep)
+		next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[i]*(vel*dt)**2
+		prev_timestep = curr_timestep
+		curr_timestep = next_timestep
+		print(next_timestep[x_idx+radius, y_idx+radius, z_idx+radius])
+
+		#print(laplace(next_timestep, coeff)[x_idx+radius, y_idx+radius, z_idx+radius])
+	return next_timestep
+
+#next_timestep = time_step(next_timestep, curr_timestep, prev_timestep, nt)
+next_timestep = time_step_stencil(next_timestep, curr_timestep, prev_timestep, nt)
 
 fig, ax = pyplot.subplots()
 next_timestep = (next_timestep[:, :, z_idx + radius]) 
