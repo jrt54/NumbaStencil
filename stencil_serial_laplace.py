@@ -31,7 +31,7 @@ coeff = [-3.0548446, 1.777777, -3.1111111/10, 7.572087/100, -1.767676/100, 3.480
 
 @stencil(neighborhood = ((-radius, radius), (-radius, radius), (-radius, radius),), standard_indexing=("coeff",) )
 #@jit(nopython=True, parallel=True)
-@numba.njit(parallel=True)
+#@numba.njit(parallel=True)
 def laplace(a, coeff):
 	laplace = coeff[0]*a[0, 0, 0]*3
 	for i in range(1, radius+1):
@@ -57,6 +57,9 @@ curr_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+
 next_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+2*radius, ny+2*radius, nz+2*radius))
 curr_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[0]*(vel*dt)**2
 
+#@jit(nopython=False, parallel=True)
+#@numba.njit(parallel=True)
+#@numba.njit(nopython=True, parallel=True)
 def time_step(next_timestep, curr_timestep, prev_timestep, nt):
 	for i in range(1, nt): 
 		next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 

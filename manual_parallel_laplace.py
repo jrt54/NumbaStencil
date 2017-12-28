@@ -68,9 +68,7 @@ curr_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[0]*(vel*dt)**2
 #laplace_arr = laplace(curr_timestep, coeff)
 #print laplace_arr
 
-#@njit(parallel=True)
-
-
+#@jit(parallel=True)
 #@numba.njit(parallel=True)
 def time_step(next_timestep, curr_timestep, prev_timestep, nt):
 	for i in range(1, nt): 
