@@ -3,35 +3,29 @@ from numba import njit, prange
 import numba
 import numpy as np
 from matplotlib import pyplot
+import time
 
+
+#finite difference coefficients for different order of stencils
+radius = 8
+coeff = [-3.0548446, 1.777777, -3.1111111/10, 7.572087/100, -1.767676/100, 3.480962/1000, -5.180005/10000, 5.074287/(10*10*10*10*10), -2.42812/np.power(10, 6)]
 
 vel = 3000.0
 f0 = 15
-nt = 200
-dt = .002
-nx = 200
-ny = 200
-nz = 200
-#nx = 50
-#ny = 50
-#nz = 50
 h = vel/(f0*5.0)
+nt = 200
+#dt = .002
+dt = .3*h/vel
+#nx, ny, nz = 512+2*radius, 512+2*radius, 512+2*radius
+nx, ny, nz = 256+2*radius, 256+2*radius, 256+2*radius
+#nx, ny, nz = 50,50,50
 x_idx = nx//2
 y_idx = ny//2
 z_idx = nz//2
-#finite difference coefficients for different order of stencils
-#radius = 1
-#coeff = [-2, 1] 
-#radius = 4
-#coeff = [-2.8472222, 1.6, -.2, 2.53968/100]
-radius = 8
-coeff = [-3.0548446, 1.777777, -3.1111111/10, 7.572087/100, -1.767676/100, 3.480962/1000, -5.180005/10000, 5.074287/(10*10*10*10*10), -2.42812/np.power(10, 6)]
 
 
 
 @stencil(neighborhood = ((-radius, radius), (-radius, radius), (-radius, radius),), standard_indexing=("coeff",) )
-#@jit(nopython=True, parallel=True)
-#@numba.njit(parallel=True)
 def laplace(a, coeff):
 	laplace = coeff[0]*a[0, 0, 0]*3
 	for i in range(1, radius+1):
@@ -58,16 +52,15 @@ next_timestep = np.zeros((nx+2*radius)*(ny+2*radius)*(nz+2*radius)).reshape((nx+
 curr_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source[0]*(vel*dt)**2
 
 		
-#@numba.njit(nopython=False, parallel=True)
-#@njit(parallel=True)
 @numba.njit(parallel=True)
-def time_step(next_timestep, curr_timestep, prev_timestep, source):
-	#next_timestep = 2*curr_timestep - prev_timestep 
-	next_timestep = laplace(curr_timestep, coeff) 
-	#next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
-	next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += source*(vel*dt)**2
+def time_step(next_timestep, curr_timestep, prev_timestep, coeff, single_source, vel, dt, h):
+	next_timestep = 2*curr_timestep - prev_timestep + laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
+	next_timestep[x_idx+radius, y_idx+radius, z_idx+radius] += single_source*(vel*dt)**2
 	prev_timestep = curr_timestep
 	curr_timestep = next_timestep
+
+	#next_timestep = laplace(curr_timestep, coeff)*((dt*vel/h)**2) 
+
 	#print("timestep at center: ", next_timestep[x_idx+radius, y_idx+radius, z_idx+radius])
 	#print("source: ", source)
 	return next_timestep, curr_timestep, prev_timestep
@@ -75,13 +68,16 @@ def time_step(next_timestep, curr_timestep, prev_timestep, source):
 #@jit(nopython=False, parallel=True)
 #@numba.njit(nopython=True, parallel=True)
 #@numba.njit(parallel=True)
-def all_time_step(next_timestep, curr_timestep, prev_timestep, nt):
+def all_time_step(next_timestep, curr_timestep, prev_timestep, coeff, source, nt, vel, dt, h):
 	for i in range(1, nt): 
-		next_timestep, curr_timestep, prev_timestep = time_step(next_timestep, curr_timestep, prev_timestep, source[i])
+		next_timestep, curr_timestep, prev_timestep = time_step(next_timestep, curr_timestep, prev_timestep, coeff, source[i], vel, dt, h)
 	return next_timestep
 
 
-next_timestep = all_time_step(next_timestep, curr_timestep, prev_timestep, nt)
+start_time = time.time()
+next_timestep = all_time_step(next_timestep, curr_timestep, prev_timestep, coeff, source, nt, vel, dt, h)
+print("Total timestepping compute time: %s " %(time.time()-start_time))
+#next_timestep = all_time_step(next_timestep, curr_timestep, prev_timestep, coeff, source, nt)
 
 fig, ax = pyplot.subplots()
 next_timestep = (next_timestep[:, :, z_idx + radius]) 
